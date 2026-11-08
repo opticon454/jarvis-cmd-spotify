@@ -1,8 +1,9 @@
 """SpotifyPlayCommand: "play <something> on Spotify" through the node's own Spotify Connect speaker."""
 
+import re
 import sys
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 for _candidate in ("spotify_shared", "lib"):
     _lib_dir: str = str(Path.home() / ".jarvis" / "packages" / "spotify_play" / _candidate)
@@ -23,6 +24,7 @@ except ImportError:
 from jarvis_command_sdk import (
     CommandExample,
     CommandResponse,
+    FastPathPattern,
     IJarvisCommand,
     IJarvisSecret,
     JarvisPackage,
@@ -32,9 +34,39 @@ from jarvis_command_sdk import (
     RequestInformation,
 )
 
-from spotify_shared.spotify_service import KINDS, SpotifyError, SpotifyService
+from jarvis_command_sdk.command import PreRouteResult
+
+from spotify_shared.spotify_service import AUTO, KINDS, SpotifyError, SpotifyService
 
 logger = JarvisLogger(service="spotify-play")
+
+
+_LEAD = r"^\s*(?:hey,?\s+jarvis,?\s+)?(?:(?:can|could|will)\s+you\s+)?(?:please\s+)?"
+_VERB = r"(?:play|put\s+on)"
+# "play X on/from Spotify" and "Spotify, play X". Both need the word Spotify, so a bare "play" is left to the model
+# and to any other music command.
+_PLAY_ON = _LEAD + _VERB + r"\s+(?P<what>.+?)\s+(?:on|from|in|using|with|via)\s+spotify\W*$"
+_SPOTIFY_PLAY = _LEAD + r"spotify,?\s+" + _VERB + r"\s+(?P<what>.+?)\W*$"
+
+
+def parse_request(what: str) -> Tuple[str, str, Optional[str]]:
+    """What the user said to play -> (query, kind, artist). "the album X by Y", "my X playlist", "some X" (an
+    artist), "the song X by Y"; anything else is searched as AUTO."""
+    what = re.sub(r"\s+", " ", what).strip().strip("\"'")
+    kind = AUTO
+    for pattern, k in ((r"^(?:the\s+|my\s+)?album\s+(.+)$", "album"), (r"^(?:the\s+|my\s+)?playlist\s+(.+)$", "playlist"),
+                       (r"^(?:the\s+|my\s+)?(.+?)\s+playlist$", "playlist"), (r"^(?:the\s+)?(?:song|track)\s+(.+)$", "track"),
+                       (r"^(?:some|any)\s+(.+)$", "artist")):
+        m = re.match(pattern, what, re.IGNORECASE)
+        if m:
+            what, kind = m.group(1).strip(), k
+            break
+    artist = None
+    m = re.match(r"^(.+?)\s+by\s+(.+)$", what, re.IGNORECASE)
+    if m and kind in (AUTO, "track", "album"):
+        what, artist = m.group(1).strip(), m.group(2).strip()
+        kind = "track" if kind == AUTO else kind
+    return what, kind, artist
 
 
 class SpotifyPlayCommand(IJarvisCommand):
@@ -51,7 +83,7 @@ class SpotifyPlayCommand(IJarvisCommand):
     def description(self) -> str:
         return (
             "Play a song, album, artist or playlist on Spotify. query is what to play, kind says what it is "
-            "(track unless the user says album, artist or playlist), artist narrows a song or album. Use whenever "
+            "(leave empty unless the user says song, album, artist or playlist), artist narrows a song or album. Use whenever "
             "the user says 'play ... on Spotify' or 'from Spotify'."
         )
 
@@ -69,10 +101,28 @@ class SpotifyPlayCommand(IJarvisCommand):
             JarvisParameter("query", "string", required=True,
                             description="What to play: a song, album, artist or playlist name, without the word Spotify"),
             JarvisParameter("kind", "string", required=False, enum_values=KINDS,
-                            description="track (default), album, artist or playlist"),
+                            description="track, album, artist or playlist. Leave empty when unsure."),
             JarvisParameter("artist", "string", required=False,
                             description="The artist, when the user named one for a song or album"),
         ]
+
+    @property
+    def fast_path_patterns(self) -> List[FastPathPattern]:
+        return [
+            FastPathPattern(id="spotify.play_on", description="Play something when you say 'on Spotify' or 'from Spotify'",
+                            example="Play Hysteria by Muse on Spotify", regex=_PLAY_ON, handler="_fast_play"),
+            FastPathPattern(id="spotify.spotify_play", description="Play something when the phrase starts with 'Spotify'",
+                            example="Spotify, play Discover Weekly", regex=_SPOTIFY_PLAY, handler="_fast_play"),
+        ]
+
+    def _fast_play(self, match: "re.Match[str]", voice_command: str) -> Optional[PreRouteResult]:
+        query, kind, artist = parse_request(match.group("what"))
+        if not query:
+            return None
+        args: Dict[str, Any] = {"query": query, "kind": kind}
+        if artist:
+            args["artist"] = artist
+        return PreRouteResult(arguments=args)
 
     @property
     def required_secrets(self) -> List[IJarvisSecret]:
@@ -149,7 +199,7 @@ class SpotifyPlayCommand(IJarvisCommand):
                                                   context_data={"error": "missing_query"})
         try:
             service = self._service()
-            match = service.search(query, str(kwargs.get("kind") or "track").lower(), kwargs.get("artist"))
+            match = service.search(query, str(kwargs.get("kind") or AUTO).lower(), kwargs.get("artist"))
             service.play(match)
         except SpotifyError as exc:
             return CommandResponse.error_response(error_details=str(exc), context_data={"error": "spotify_error"})

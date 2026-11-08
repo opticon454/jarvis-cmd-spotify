@@ -1,6 +1,8 @@
 import pytest
 
-from commands.spotify_play.command import SpotifyPlayCommand
+import re
+
+from commands.spotify_play.command import SpotifyPlayCommand, parse_request
 from jarvis_command_sdk import IJarvisCommand
 from spotify_shared.spotify_service import Match, SpotifyError, SpotifyService, build_query
 
@@ -21,9 +23,19 @@ class TestSearch:
         m = service(http).search("Hysteria", "track", "Muse")
         assert (m.uri, m.spoken()) == ("spotify:track:1", "Hysteria by Muse")
 
-    def test_unknown_kind_searches_tracks(self, http):
+    def test_unknown_kind_searches_everything(self, http):
         service(http).search("x", "podcast")
-        assert http.calls[-1][2]["params"]["type"] == "track"
+        assert http.calls[-1][2]["params"]["type"] == "track,album,artist,playlist"
+
+    def test_auto_prefers_an_exact_artist_over_a_song_with_the_same_name(self, http):
+        http.search_items["*"] = {"track": [{"uri": "t", "name": "Muse", "artists": [{"name": "X"}]}],
+                                  "artist": [{"uri": "a", "name": "Muse"}], "album": [], "playlist": [None]}
+        assert service(http).search("muse").uri == "a"
+
+    def test_auto_without_an_exact_name_takes_the_top_track(self, http):
+        http.search_items["*"] = {"track": [{"uri": "t", "name": "Hysteria", "artists": []}],
+                                  "artist": [{"uri": "a", "name": "Muse"}]}
+        assert service(http).search("hyst").uri == "t"
 
     def test_token_is_fetched_once_and_uses_the_secret_as_basic_auth(self, http):
         s = service(http)
@@ -98,3 +110,39 @@ class TestCommand:
     def test_spotify_error_is_returned_not_raised(self, command, http):
         http.search_status = 429
         assert "busy" in command.run(None, query="x").error_details
+
+
+class TestFastPath:
+    @pytest.fixture
+    def cmd(self):
+        return SpotifyPlayCommand()
+
+    def claim(self, cmd, said):
+        r = cmd.pre_route(said)
+        return r.arguments if r else None
+
+    @pytest.mark.parametrize("said,args", [
+        ("Play Hysteria by Muse on Spotify", {"query": "Hysteria", "kind": "track", "artist": "Muse"}),
+        ("play Taylor Swift on Spotify.", {"query": "Taylor Swift", "kind": "auto"}),
+        ("Hey Jarvis, play the album Rumours from Spotify", {"query": "Rumours", "kind": "album"}),
+        ("could you please play my Chill Hits playlist on spotify", {"query": "Chill Hits", "kind": "playlist"}),
+        ("Play some Tame Impala on Spotify", {"query": "Tame Impala", "kind": "artist"}),
+        ("Spotify, play Discover Weekly", {"query": "Discover Weekly", "kind": "auto"}),
+        ("put on Abbey Road by The Beatles via Spotify", {"query": "Abbey Road", "kind": "track", "artist": "The Beatles"}),
+        ("play the album Abbey Road by The Beatles on Spotify", {"query": "Abbey Road", "kind": "album", "artist": "The Beatles"}),
+    ])
+    def test_claims_and_parses(self, cmd, said, args):
+        assert self.claim(cmd, said) == args
+
+    @pytest.mark.parametrize("said", ["play some jazz", "pause spotify", "what is playing on spotify", "turn on the lights",
+                                      "how do I play on Spotify without ads?", "play"])
+    def test_leaves_everything_else_to_the_model(self, cmd, said):
+        assert self.claim(cmd, said) is None
+
+    def test_a_switched_off_pattern_is_not_claimed(self, cmd):
+        off = {"spotify.play_on"}
+        assert cmd.pre_route("play x on spotify", disabled_pattern_ids=off) is None
+        assert cmd.pre_route("spotify play x", disabled_pattern_ids=off) is not None
+
+    def test_parse_request_keeps_by_inside_a_title_for_a_playlist(self):
+        assert parse_request("my Songs by Me playlist") == ("Songs by Me", "playlist", None)

@@ -14,6 +14,7 @@ TOKEN_URL = "https://accounts.spotify.com/api/token"
 SEARCH_URL = "https://api.spotify.com/v1/search"
 DEFAULT_LIBRESPOT = "http://127.0.0.1:3678"
 KINDS = ["track", "album", "artist", "playlist"]
+AUTO = "auto"  # unsure what was asked for: search all four and prefer an exact name, artists first
 _TIMEOUT = 8
 
 
@@ -71,23 +72,32 @@ class SpotifyService:
         self._expires = time.time() + float(body.get("expires_in", 3600))
         return self._token
 
-    def search(self, query: str, kind: str = "track", artist: Optional[str] = None) -> Match:
-        kind = kind if kind in KINDS else "track"
-        params = {"q": build_query(query, kind, artist), "type": kind, "limit": 5, "market": self._market}
+    def search(self, query: str, kind: str = AUTO, artist: Optional[str] = None) -> Match:
+        kind = kind if kind in KINDS else AUTO
+        types = ",".join(KINDS) if kind == AUTO else kind
+        params = {"q": build_query(query, kind, artist), "type": types, "limit": 5, "market": self._market}
         r = self._http.get(SEARCH_URL, params=params, headers={"Authorization": f"Bearer {self._bearer()}"},
                            timeout=_TIMEOUT)
         if r.status_code == 429:
             raise SpotifyError("Spotify is busy. Try again in a minute.")
         if r.status_code != 200:
             raise SpotifyError("Spotify search failed. Try again in a moment.")
+        body = r.json()
         # Spotify can return null entries in the list (seen for playlists), so skip them.
-        items = [i for i in (r.json().get(f"{kind}s") or {}).get("items", []) if i and i.get("uri")]
-        if not items and artist:  # the artist filter is strict; fall back to the plain words
+        found = {k: [i for i in (body.get(f"{k}s") or {}).get("items", []) if i and i.get("uri")]
+                 for k in (KINDS if kind == AUTO else [kind])}
+        if not any(found.values()) and artist:  # the artist filter is strict; fall back to the plain words
             return self.search(f"{query} {artist}", kind, None)
-        if not items:
-            raise SpotifyError(f"I couldn't find {query} on Spotify.")
-        top = items[0]
-        return Match(kind, top.get("name", query), _by(kind, top), top["uri"])
+        if kind == AUTO:
+            for k in ("artist", "track", "album", "playlist"):  # an exact name wins; "play Muse" is the band, not a song
+                exact = [i for i in found[k] if i.get("name", "").casefold() == query.strip().casefold()]
+                if exact:
+                    return Match(k, exact[0]["name"], _by(k, exact[0]), exact[0]["uri"])
+        for k in ("track", "artist", "album", "playlist") if kind == AUTO else [kind]:
+            if found.get(k):
+                top = found[k][0]
+                return Match(k, top.get("name", query), _by(k, top), top["uri"])
+        raise SpotifyError(f"I couldn't find {query} on Spotify.")
 
     def play(self, match: Match) -> None:
         try:

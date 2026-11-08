@@ -10,6 +10,19 @@ Spotify" and the node plays it through its own Spotify Connect speaker.
 3. It tells the node's [go-librespot](https://github.com/devgianlu/go-librespot) receiver to play it, on the account
    the node is already paired with.
 
+## What you can say
+
+| You say                                  | Plays                      |
+| ---------------------------------------- | -------------------------- |
+| "Play Hysteria by Muse on Spotify"       | The song                   |
+| "Play the album Rumours from Spotify"    | The album                  |
+| "Play Taylor Swift on Spotify"           | The artist (an exact name) |
+| "Play my Chill Hits playlist on Spotify" | The playlist               |
+| "Spotify, play Discover Weekly"          | Best match                 |
+
+The phrase must include "Spotify". These are fast paths: the node runs them with no model, and each can be switched off in
+the app's Inspect fast-paths screen.
+
 ## Requirements
 
 - Spotify Premium, and the node running go-librespot (see `docs/agent/spotify-connect.md` in jarvis-server).

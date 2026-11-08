@@ -42,8 +42,11 @@ class FakeHttp:
 
     def get(self, url: str, **kw):
         self.calls.append(("GET", url, kw))
-        kind = kw["params"]["type"]
-        return FakeResponse(self.search_status, {f"{kind}s": {"items": self.search_items.get(kw["params"]["q"], self.search_items.get("*", []))}})
+        items = self.search_items.get(kw["params"]["q"], self.search_items.get("*", []))
+        if isinstance(items, dict):  # per kind, for an auto search
+            return FakeResponse(self.search_status, {f"{k}s": {"items": v} for k, v in items.items()})
+        kind = kw["params"]["type"].split(",")[0]  # a plain list answers as the first type asked for
+        return FakeResponse(self.search_status, {f"{kind}s": {"items": items}})
 
 
 @pytest.fixture
