@@ -1,0 +1,49 @@
+name: "spotify_play"
+display_name: "Spotify Play"
+description: "Say \"play Hysteria by Muse on Spotify\" and the node plays it through its own Spotify Connect speaker. Finds the track, album, artist or playlist with your own Spotify developer app, then plays it on the node's go-librespot receiver."
+version: "0.1.0"
+min_jarvis_version: "0.9.0"
+license: Apache-2.0
+author:
+  github: "opticon454"
+categories: ["media"]
+keywords: ["spotify", "play", "music", "song", "album", "artist", "playlist"]
+
+components:
+  - type: command
+    name: spotify_play
+    path: commands/spotify_play/command.py
+
+packages:
+  - name: requests
+    version: ">=2.31.0"
+
+secrets:
+  - key: SPOTIFY_CLIENT_ID
+    scope: integration
+    value_type: string
+    required: true
+    is_sensitive: false
+    description: "Client ID of your own Spotify developer app (developer.spotify.com/dashboard)"
+    friendly_name: "Spotify client ID"
+  - key: SPOTIFY_CLIENT_SECRET
+    scope: integration
+    value_type: string
+    required: true
+    is_sensitive: true
+    description: "Client secret of that app. Used only to search the catalogue."
+    friendly_name: "Spotify client secret"
+  - key: SPOTIFY_LIBRESPOT_URL
+    scope: integration
+    value_type: string
+    required: false
+    is_sensitive: false
+    description: "Local API of the node's go-librespot receiver (default http://127.0.0.1:3678)"
+    friendly_name: "Receiver URL"
+  - key: SPOTIFY_MARKET
+    scope: integration
+    value_type: string
+    required: false
+    is_sensitive: false
+    description: "Two-letter country code to search in (default AU)"
+    friendly_name: "Market"

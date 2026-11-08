@@ -1,0 +1,8 @@
+jarvis-cmd-spotify
+Copyright 2026 opticon454
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+Uses the Spotify Web API (https://developer.spotify.com/documentation/web-api) through the requests library (Apache-2.0),
+and the local API of go-librespot (GPL-3.0) as a separate program over HTTP; nothing of go-librespot is included here.
+This package is not affiliated with or endorsed by Spotify.
