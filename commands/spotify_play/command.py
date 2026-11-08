@@ -119,7 +119,9 @@ class SpotifyPlayCommand(IJarvisCommand):
         query, kind, artist = parse_request(match.group("what"))
         if not query:
             return None
-        args: Dict[str, Any] = {"query": query, "kind": kind}
+        args: Dict[str, Any] = {"query": query}
+        if kind != AUTO:  # left out when unsure: the command's enum does not list "auto"
+            args["kind"] = kind
         if artist:
             args["artist"] = artist
         return PreRouteResult(arguments=args)

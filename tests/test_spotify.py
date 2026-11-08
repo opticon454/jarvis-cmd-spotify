@@ -123,11 +123,11 @@ class TestFastPath:
 
     @pytest.mark.parametrize("said,args", [
         ("Play Hysteria by Muse on Spotify", {"query": "Hysteria", "kind": "track", "artist": "Muse"}),
-        ("play Taylor Swift on Spotify.", {"query": "Taylor Swift", "kind": "auto"}),
+        ("play Taylor Swift on Spotify.", {"query": "Taylor Swift"}),
         ("Hey Jarvis, play the album Rumours from Spotify", {"query": "Rumours", "kind": "album"}),
         ("could you please play my Chill Hits playlist on spotify", {"query": "Chill Hits", "kind": "playlist"}),
         ("Play some Tame Impala on Spotify", {"query": "Tame Impala", "kind": "artist"}),
-        ("Spotify, play Discover Weekly", {"query": "Discover Weekly", "kind": "auto"}),
+        ("Spotify, play Discover Weekly", {"query": "Discover Weekly"}),
         ("put on Abbey Road by The Beatles via Spotify", {"query": "Abbey Road", "kind": "track", "artist": "The Beatles"}),
         ("play the album Abbey Road by The Beatles on Spotify", {"query": "Abbey Road", "kind": "album", "artist": "The Beatles"}),
     ])
@@ -146,3 +146,14 @@ class TestFastPath:
 
     def test_parse_request_keeps_by_inside_a_title_for_a_playlist(self):
         assert parse_request("my Songs by Me playlist") == ("Songs by Me", "playlist", None)
+
+
+class TestFastPathArgumentsPassTheCommandsOwnValidation:
+    """The sidecar runs execute(), which rejects values outside a parameter's enum, so the fast path must not send any."""
+
+    @pytest.mark.parametrize("said", ["Play Taylor Swift on Spotify", "Spotify, play Discover Weekly", "Play some Muse from Spotify",
+                                      "Play Hysteria by Muse on Spotify", "play the album Rumours on spotify"])
+    def test_every_argument_is_valid(self, said):
+        cmd = SpotifyPlayCommand()
+        args = cmd.pre_route(said).arguments
+        assert all(r.success for r in cmd.validate_call(**args)), args
