@@ -54,3 +54,11 @@ def http() -> FakeHttp:
     h = FakeHttp()
     h.search_items["*"] = [None, {"uri": "spotify:track:1", "name": "Hysteria", "artists": [{"name": "Muse"}]}]
     return h
+
+
+@pytest.fixture(autouse=True)
+def no_real_pkill(monkeypatch):
+    """play() ends any other service's mpv; never do that to the machine running the tests."""
+    ran = []
+    monkeypatch.setattr("spotify_shared.spotify_service.subprocess.run", lambda cmd, **kw: ran.append(cmd))
+    return ran

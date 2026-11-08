@@ -67,6 +67,10 @@ class TestPlay:
         method, url, kw = http.calls[-1]
         assert (url, kw["json"]) == ("http://10.0.0.5:9999/player/play", {"uri": "spotify:track:1"})
 
+    def test_playing_ends_another_services_mpv_first(self, http, no_real_pkill):
+        service(http).play(Match("track", "n", "", "u"))
+        assert no_real_pkill == [["pkill", "-INT", "-x", "mpv"]]
+
     def test_default_receiver_is_port_3678(self, http):
         service(http).play(Match("track", "n", "", "u"))
         assert http.calls[-1][1] == "http://127.0.0.1:3678/player/play"

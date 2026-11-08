@@ -1,5 +1,9 @@
 # Changelog
 
+## 20261108-1700
+
+- Playing now ends any `mpv` another service started, so two streams never share the speaker.
+
 ## 20261108-1500
 
 - Added fast paths, so "play X on Spotify" and "Spotify, play X" run with no model. Anything without the word Spotify

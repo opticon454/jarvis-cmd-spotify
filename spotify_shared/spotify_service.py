@@ -6,6 +6,7 @@ API, which plays on the account the node is already paired with. No credential i
 
 from __future__ import annotations
 
+import subprocess
 import time
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -100,6 +101,10 @@ class SpotifyService:
         raise SpotifyError(f"I couldn't find {query} on Spotify.")
 
     def play(self, match: Match) -> None:
+        try:
+            subprocess.run(["pkill", "-INT", "-x", "mpv"], capture_output=True, timeout=2)  # another service's stream
+        except (OSError, subprocess.SubprocessError):
+            pass
         try:
             r = self._http.post(f"{self._base}/player/play", json={"uri": match.uri}, timeout=_TIMEOUT)
         except Exception as exc:  # noqa: BLE001 - requests' errors differ by version
